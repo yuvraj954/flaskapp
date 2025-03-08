@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image OCR</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-500 to-purple-600 flex flex-col items-center p-6 min-h-screen text-white">
+
+    <h1 class="text-3xl font-bold mb-4">Image Text Extractor</h1>
+
+    <!-- Camera Capture -->
+    <div class="w-full max-w-md bg-white shadow-2xl rounded-xl p-6 mb-6 text-gray-800">
+        <h2 class="text-xl font-semibold mb-3 text-center">Capture Live Photo</h2>
+        <video id="video" class="w-full rounded-lg shadow-md" autoplay playsinline></video>
+        <img id="capturedImage" class="w-full hidden rounded-lg shadow-md" />
+
+        <div class="flex justify-between mt-4">
+            <button id="switchCamera" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 transition-all w-1/2 mr-2">
+                🔄 Switch Camera
+            </button>
+            <button id="capture" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all w-1/2 relative">
+                <span id="captureText">📷 Capture</span>
+                <span id="captureLoader" class="hidden absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <svg class="animate-spin h-15 w-15 text-white" viewBox="0 0 24 24" fill="none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                </span>
+            </button>
+            <button id="retake" class="hidden bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-all w-1/2">
+                🔄 Retake
+            </button>
+        </div>
+        <canvas id="canvas" class="hidden"></canvas>
+    </div>
+
+    <!-- File Upload -->
+    <div class="w-full max-w-md bg-white shadow-lg rounded-lg p-4 mb-4 text-gray-800">
+        <h2 class="text-lg font-semibold mb-2 text-center">Or Upload an Image</h2>
+        <input type="file" id="fileInput" accept="image/*" class="block w-full border border-gray-300 p-2 rounded-lg">
+        <button id="uploadFile" class="w-full mt-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 relative">
+            <span id="uploadText">📤 Upload Image</span>
+            <span id="uploadLoader" class="hidden absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                <svg class="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24" fill="none">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+            </span>
+        </button>
+    </div>
+
+    <!-- Extracted Text Display -->
+    <div class="w-full max-w-md bg-white shadow-lg rounded-lg p-4 mb-4 text-gray-800">
+        <h2 class="text-lg font-semibold mb-2">Extracted Text</h2>
+        <div id="extracted-text" class="border p-3 min-h-[100px] rounded-lg bg-gray-50 text-gray-700 whitespace-pre-wrap">
+            No text extracted yet.
+        </div>
+    </div>
+
+    <!-- Download Excel Button -->
+    <a id="downloadExcel" href="#" class="hidden w-full max-w-md bg-purple-600 text-white px-4 py-2 text-center rounded-lg hover:bg-purple-700">
+        Download Extracted Text (Excel)
+    </a>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const captureBtn = document.getElementById('capture');
+        const retakeBtn = document.getElementById('retake');
+        const fileInput = document.getElementById('fileInput');
+        const uploadFileBtn = document.getElementById('uploadFile');
+        const extractedTextDiv = document.getElementById('extracted-text');
+        const downloadExcelBtn = document.getElementById('downloadExcel');
+        const captureText = document.getElementById('captureText');
+        const captureLoader = document.getElementById('captureLoader');
+        const uploadText = document.getElementById('uploadText');
+        const uploadLoader = document.getElementById('uploadLoader');
+        const switchCameraBtn = document.getElementById('switchCamera');
+        const capturedImage = document.getElementById('capturedImage');
+
+        let usingFrontCamera = true;
+        let stream = null;
+
+        function startCamera() {
+            let constraints = {
+                video: {
+                    facingMode: usingFrontCamera ? "user" : "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            };
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(newStream => {
+                    stream = newStream;
+                    video.srcObject = stream;
+                    video.classList.toggle("scale-x-[-1]", usingFrontCamera);
+                    video.classList.remove("hidden");
+                    capturedImage.classList.add("hidden");
+                    captureBtn.classList.remove("hidden");
+                    retakeBtn.classList.add("hidden");
+                })
+                .catch(err => console.error("Error accessing camera: ", err));
+        }
+
+        startCamera();
+
+        switchCameraBtn.addEventListener('click', () => {
+            usingFrontCamera = !usingFrontCamera;
+            startCamera();
+        });
+
+        captureBtn.addEventListener('click', () => {
+            captureText.classList.add("hidden");
+            captureLoader.classList.remove("hidden");
+            captureBtn.disabled = true;
+
+            let context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            if (usingFrontCamera) {
+                context.translate(canvas.width, 0);
+                context.scale(-1, 1);
+            }
+
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            let imageData = canvas.toDataURL('image/png');
+
+            capturedImage.src = imageData;
+            capturedImage.classList.remove("hidden");
+            video.classList.add("hidden");
+            captureBtn.classList.add("hidden");
+            retakeBtn.classList.remove("hidden");
+
+            sendToBackend(imageData);
+        });
+
+        retakeBtn.addEventListener('click', () => {
+            startCamera();
+        });
+
+        function sendToBackend(imageData) {
+            fetch('/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageData })
+            })
+            .then(response => response.json())
+            .then(data => {
+                extractedTextDiv.innerText = data.text || "Failed to extract text.";
+                downloadExcelBtn.classList.toggle("hidden", !data.text);
+                downloadExcelBtn.href = data.download_link || "#";
+            })
+            .catch(err => console.error("Error processing image: ", err))
+            .finally(() => {
+                captureText.classList.remove("hidden");
+                captureLoader.classList.add("hidden");
+                captureBtn.disabled = false;
+            });
+        }
+    </script>
+
+</body>
+</html>
